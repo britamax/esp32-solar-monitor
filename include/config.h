@@ -6,7 +6,8 @@
 // ============================================================
 
 // --- Versi Firmware ---
-#define FIRMWARE_VERSION    "1.0.0"
+#define FIRMWARE_VERSION    "2.0.0"
+#define FIRMWARE_BUILD      __DATE__ " " __TIME__   // otomatis dari compiler
 #define DEVICE_NAME_DEFAULT "Monitoring-Daya"
 
 // --- Pin I2C ---
@@ -15,6 +16,10 @@
 
 // --- Pin Buzzer ---
 #define PIN_BUZZER          27
+#define BUZZER_ON           LOW    // Active LOW buzzer
+
+// --- Pin Reset Button ---
+#define PIN_RESET_BTN       14    // Hubungkan ke GND saat ditekan
 
 // --- OLED ---
 #define OLED_ADDR           0x3C
@@ -23,7 +28,7 @@
 
 // --- INA3221 ---
 #define INA_ADDR            0x40
-#define INA_SHUNT_OHMS      0.005f      // 5mΩ
+#define INA_SHUNT_OHMS_DEFAULT  0.005f      // 5mΩ default
 #define INA_SHUNT_LSB       0.00004f    // 40µV/bit
 #define INA_BUS_LSB         0.008f      // 8mV/bit
 #define INA_CONFIG_VAL      0x7127      // CH1+2+3 ON, avg64, 1.1ms
@@ -74,7 +79,13 @@
 #define OLED_PAGE_DURATION  3000        // ms per halaman
 
 // --- kWh Simpan Interval ---
-#define KWH_SAVE_MS         3600000UL   // 1 jam dalam ms
+#define KWH_SAVE_MS         300000UL    // 5 menit (lebih sering untuk cegah data hilang saat restart)
+
+// --- Default Threshold Alarm ---
+#define ALARM_V_MIN_DEFAULT   3.0f    // tegangan minimum baterai (V)
+#define ALARM_V_MAX_DEFAULT   4.2f    // tegangan maksimum baterai (V)
+#define ALARM_I_MAX_DEFAULT   10.0f   // arus maksimum (A)
+#define ALARM_QUAKE_DEFAULT   0.5f    // threshold gempa (g)
 
 // --- Mode Operasi ---
 #define MODE_WIFI           "wifi"

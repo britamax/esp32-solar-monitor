@@ -27,56 +27,56 @@ public:
 
   void begin() {
     pinMode(PIN_BUZZER, OUTPUT);
-    digitalWrite(PIN_BUZZER, LOW);
+    digitalWrite(PIN_BUZZER, !BUZZER_ON);
     isEnabled = true;
     isActive  = false;
-    _pattern  = BUZZ_OFF;
-    _endTime  = 0;
+    _alarmEnd = 0;
+    _onMs     = 100;
+    _offMs    = 100;
   }
 
-  // Mainkan pola beep
+  // Mainkan event alarm dengan setting per-event
+  // onMs = durasi beep, offMs = jeda, durSec = total detik
+  void playAlarm(int onMs, int offMs, int durSec) {
+    if (!isEnabled) return;
+    _onMs     = onMs;
+    _offMs    = offMs;
+    _alarmEnd = millis() + (durSec * 1000UL);
+    isActive  = true;
+  }
+
+  // Pola pendek blocking (startup, ok, warning)
   void play(BuzzPattern pattern) {
     if (!isEnabled) return;
-    _pattern = pattern;
-
     switch (pattern) {
-      case BUZZ_STARTUP:
-        _beepSequence(2, 100, 100);
-        break;
-      case BUZZ_OK:
-        _beep(80);
-        break;
-      case BUZZ_WARNING:
-        _beepSequence(3, 200, 150);
-        break;
-      case BUZZ_ALARM:
-        _beep(1000);
-        break;
-      case BUZZ_QUAKE:
-        _beepSequence(5, 100, 80);
-        break;
-      default:
-        break;
+      case BUZZ_STARTUP: _beepSequence(2, 100, 100); break;
+      case BUZZ_OK:      _beep(80);                  break;
+      case BUZZ_WARNING: _beepSequence(3, 200, 150); break;
+      default: break;
     }
   }
 
-  // Beep custom: durasi ON dan jeda (ms)
-  void playCustom(int onMs, int offMs, int count) {
-    if (!isEnabled) return;
-    _beepSequence(count, onMs, offMs);
-  }
-
-  // Nyalakan terus (untuk alarm aktif)
-  void on() {
-    if (!isEnabled) return;
-    digitalWrite(PIN_BUZZER, HIGH);
-    isActive = true;
+  // Handle non-blocking di loop()
+  void handle() {
+    if (!isActive || !isEnabled) return;
+    if (millis() >= _alarmEnd) {
+      digitalWrite(PIN_BUZZER, !BUZZER_ON);
+      isActive = false;
+      return;
+    }
+    digitalWrite(PIN_BUZZER, BUZZER_ON);
+    delay(_onMs);
+    digitalWrite(PIN_BUZZER, !BUZZER_ON);
+    delay(_offMs);
   }
 
   void off() {
-    digitalWrite(PIN_BUZZER, LOW);
-    isActive = false;
+    digitalWrite(PIN_BUZZER, !BUZZER_ON);
+    isActive  = false;
+    _alarmEnd = 0;
   }
+
+  void stop() { off(); }  // alias untuk button handler
 
   void setEnabled(bool val) {
     isEnabled = val;
@@ -84,21 +84,22 @@ public:
   }
 
 private:
-  BuzzPattern _pattern;
-  unsigned long _endTime;
+  unsigned long _alarmEnd = 0;
+  int _onMs  = 100;
+  int _offMs = 100;
 
   void _beep(int durationMs) {
-    digitalWrite(PIN_BUZZER, HIGH);
+    digitalWrite(PIN_BUZZER, BUZZER_ON);
     delay(durationMs);
-    digitalWrite(PIN_BUZZER, LOW);
+    digitalWrite(PIN_BUZZER, !BUZZER_ON);
     isActive = false;
   }
 
   void _beepSequence(int count, int onMs, int offMs) {
     for (int i = 0; i < count; i++) {
-      digitalWrite(PIN_BUZZER, HIGH);
+      digitalWrite(PIN_BUZZER, BUZZER_ON);
       delay(onMs);
-      digitalWrite(PIN_BUZZER, LOW);
+      digitalWrite(PIN_BUZZER, !BUZZER_ON);
       if (i < count - 1) delay(offMs);
     }
     isActive = false;

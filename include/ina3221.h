@@ -4,6 +4,7 @@
 // SOLAR MONITOR — ina3221.h
 // Baca data INA3221 via register I2C langsung
 // Shunt 5mΩ, 3 channel
+// Moving average filter untuk smoothing data
 // ============================================================
 
 #include <Wire.h>
@@ -15,6 +16,9 @@
 #define INA_REG_CH1_BUS     0x02
 #define INA_REG_MANUF_ID    0xFE
 
+// Jumlah sampel moving average — lebih besar = lebih smooth tapi lebih lambat respon
+#define INA_MA_SAMPLES  8
+
 struct ChannelData {
   float voltage;        // Volt
   float current;        // Ampere (+ atau -)
@@ -23,14 +27,13 @@ struct ChannelData {
 
 class INA3221 {
 public:
-  ChannelData ch[3];    // ch[0]=CH1, ch[1]=CH2, ch[2]=CH3
-  float efficiency;     // Persen
+  ChannelData ch[3];
+  float efficiency;
   bool  isOnline;
 
-  // kWh akumulasi (dimuat dari NVS saat begin)
-  float kwh[3];         // ch1, ch3 satu arah
-  float kwhCh2In;       // kWh masuk baterai
-  float kwhCh2Out;      // kWh keluar baterai
+  float kwh[3];
+  float kwhCh2In;
+  float kwhCh2Out;
 
   void begin() {
     Wire.beginTransmission(INA_ADDR);
@@ -39,18 +42,55 @@ public:
       _writeReg(INA_REG_CONFIG, INA_CONFIG_VAL);
       delay(200);
     }
+    // Init moving average buffer
+    for (int c = 0; c < 3; c++) {
+      for (int s = 0; s < INA_MA_SAMPLES; s++) {
+        _voltBuf[c][s] = 0.0f;
+        _currBuf[c][s] = 0.0f;
+      }
+    }
   }
+
+  void setShunt(float ohms) {
+    if (ohms <= 0.0f) return;
+    _shuntOhms = ohms;
+    if (isOnline) {
+      _writeReg(INA_REG_CONFIG, INA_CONFIG_VAL);
+      delay(100);
+    }
+    Serial.printf("[INA3221] Shunt diperbarui: %.6f Ω (%.3f mΩ)\n", ohms, ohms * 1000.0f);
+  }
+
+  float getShunt() { return _shuntOhms; }
 
   void read() {
     if (!isOnline) return;
     for (int c = 0; c < 3; c++) {
       int16_t rawV = (int16_t)_readReg(INA_REG_CH1_BUS   + c * 2);
       int16_t rawI = (int16_t)_readReg(INA_REG_CH1_SHUNT + c * 2);
-      ch[c].voltage = (rawV >> 3) * INA_BUS_LSB;
-      ch[c].current = ((rawI >> 3) * INA_SHUNT_LSB) / INA_SHUNT_OHMS;
+
+      float v = (rawV >> 3) * INA_BUS_LSB;
+      float i = ((rawI >> 3) * INA_SHUNT_LSB) / _shuntOhms;
+
+      // Simpan ke moving average buffer
+      _voltBuf[c][_maIdx] = v;
+      _currBuf[c][_maIdx] = i;
+
+      // Hitung rata-rata
+      float sumV = 0, sumI = 0;
+      for (int s = 0; s < INA_MA_SAMPLES; s++) {
+        sumV += _voltBuf[c][s];
+        sumI += _currBuf[c][s];
+      }
+      ch[c].voltage = sumV / INA_MA_SAMPLES;
+      ch[c].current = sumI / INA_MA_SAMPLES;
       ch[c].power   = ch[c].voltage * ch[c].current;
     }
-    // Efisiensi
+
+    // Maju index buffer (circular)
+    _maIdx = (_maIdx + 1) % INA_MA_SAMPLES;
+    _maSamples = min(_maSamples + 1, INA_MA_SAMPLES);
+
     float useful = (ch[1].current > 0 ? ch[1].power : 0) + ch[2].power;
     efficiency   = (ch[0].power > 0.5f)
                    ? min(useful / ch[0].power * 100.0f, 100.0f)
@@ -58,15 +98,39 @@ public:
   }
 
   // Akumulasi kWh — panggil tiap interval
-  // intervalSec = selang waktu sejak pemanggilan terakhir (detik)
+  // Menggunakan rata-rata power dari semua sampel sejak interval terakhir
   void accumulateKwh(float intervalSec) {
-    // CH1 Panel
-    if (ch[0].power > 0) kwh[0] += (ch[0].power * intervalSec) / 3600.0f;
+    // Guard: maksimal 15 detik per interval
+    if (intervalSec <= 0.0f || intervalSec > 15.0f) return;
+
+    // CH1 Panel — hanya akumulasi kalau ada daya masuk
+    if (ch[0].power > 0.01f)
+      kwh[0] += (ch[0].power * intervalSec) / 3600.0f;
+
     // CH2 Baterai — pisah masuk & keluar
-    if (ch[1].current > 0.05f)  kwhCh2In  += (ch[1].power * intervalSec) / 3600.0f;
-    if (ch[1].current < -0.05f) kwhCh2Out += (abs(ch[1].power) * intervalSec) / 3600.0f;
+    if (ch[1].current > 0.05f)
+      kwhCh2In  += (ch[1].power * intervalSec) / 3600.0f;
+    if (ch[1].current < -0.05f) {
+      float delta = (fabsf(ch[1].power) * intervalSec) / 3600.0f;
+      // Deteksi spike: delta > 1 Wh dalam satu interval tidak masuk akal
+      if (delta > 1.0f) {
+        Serial.printf("[kWh] SPIKE CH2OUT! delta=%.4fWh P=%.3fW I=%.3fA t=%.1fs\n",
+          delta * 1000, ch[1].power, ch[1].current, intervalSec);
+      } else {
+        kwhCh2Out += delta;
+      }
+    }
+
     // CH3 Beban
-    if (ch[2].power > 0) kwh[2] += (ch[2].power * intervalSec) / 3600.0f;
+    if (ch[2].power > 0.01f) {
+      float delta3 = (ch[2].power * intervalSec) / 3600.0f;
+      if (delta3 > 1.0f) {
+        Serial.printf("[kWh] SPIKE CH3! delta=%.4fWh P=%.3fW t=%.1fs\n",
+          delta3 * 1000, ch[2].power, intervalSec);
+      } else {
+        kwh[2] += delta3;
+      }
+    }
   }
 
   void loadKwh(float ch1, float ch2in, float ch2out, float ch3) {
@@ -110,6 +174,14 @@ public:
   }
 
 private:
+  float _shuntOhms = INA_SHUNT_OHMS_DEFAULT;
+
+  // Moving average buffer
+  float _voltBuf[3][INA_MA_SAMPLES] = {};
+  float _currBuf[3][INA_MA_SAMPLES] = {};
+  int   _maIdx     = 0;
+  int   _maSamples = 0;
+
   uint16_t _readReg(uint8_t reg) {
     Wire.beginTransmission(INA_ADDR);
     Wire.write(reg);

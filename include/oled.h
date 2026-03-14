@@ -26,6 +26,10 @@ class OledDisplay {
 public:
   bool  _isOnline;
   int   _currentPage;   // halaman yang sedang tampil
+  bool  _enabled      = true;
+  bool  _autoScroll   = false;
+  int   _pageDurMs    = 3000;
+  unsigned long _lastPageChange = 0;
 
   // Data dari sensor lain
   float _bmpTemp=0, _bmpPress=0, _bmpAlt=0;
@@ -55,10 +59,42 @@ public:
 
   // Set halaman aktif (dari web setting)
   void setPage(int page) {
-    if (page >= 0 && page < PAGE_MAX) _currentPage = page;
+    if (page >= 0 && page < PAGE_MAX) {
+      _currentPage = page;
+      _lastPageChange = millis();
+    }
   }
 
   int getPage() { return _currentPage; }
+
+  // Pindah ke halaman berikutnya (dari tombol fisik)
+  void nextPage() {
+    _currentPage = (_currentPage + 1) % PAGE_MAX;
+    _lastPageChange = millis();
+    Serial.printf("[OLED] Next page → %d\n", _currentPage);
+  }
+
+  // Brightness 0-255
+  void setBrightness(int val) {
+    if (!_isOnline) return;
+    val = constrain(val, 0, 255);
+    _oled.ssd1306_command(SSD1306_SETCONTRAST);
+    _oled.ssd1306_command(val);
+  }
+
+  // On/Off layar
+  void setEnabled(bool on) {
+    if (!_isOnline) return;
+    _enabled = on;
+    _oled.ssd1306_command(on ? SSD1306_DISPLAYON : SSD1306_DISPLAYOFF);
+  }
+
+  // Auto-scroll setting
+  void setAutoScroll(bool on, int durationMs = 3000) {
+    _autoScroll  = on;
+    _pageDurMs   = durationMs;
+    _lastPageChange = millis();
+  }
 
   // Update info WiFi
   void setWifiInfo(String mode, String ssid, String ip, bool ok) {
@@ -209,13 +245,12 @@ public:
     char l3 = n3.length() > 0 ? n3[0] : 'L';
 
     _oled.setCursor(0, 0);
-    _oled.printf("%c%5.1fV%5.2fA%5.1fW", l1,
+    _oled.printf("%c%5.2fV%5.2fA%5.1fW", l1,
       ina.ch[0].voltage, ina.ch[0].current, ina.ch[0].power);
 
     _oled.setCursor(0, 11);
-    _oled.printf("%c%5.2fV%+5.2fA %s %d%%", l2,
-      ina.ch[1].voltage, ina.ch[1].current,
-      ina.battStatus(), ina.getSOC());
+    _oled.printf("%c%5.2fV%+5.2fA %3d%%", l2,
+      ina.ch[1].voltage, ina.ch[1].current, ina.getSOC());
 
     _oled.setCursor(0, 22);
     _oled.printf("%c%5.2fV%5.2fA%5.1fW", l3,
@@ -240,7 +275,7 @@ public:
     _oled.printf("V:%5.2fV  I:%5.2fA",
       ina.ch[0].voltage, ina.ch[0].current);
     _oled.setCursor(0, 23);
-    _oled.printf("P:%6.2fW", ina.ch[0].power);
+    _oled.printf("P:%5.2fW", ina.ch[0].power);
     _oled.display();
   }
 
@@ -325,7 +360,13 @@ public:
   // UPDATE — panggil di loop(), tampil halaman aktif saja
   // ============================================================
   void update(String ch1Name, String ch2Name, String ch3Name) {
-    if (!_isOnline) return;
+    if (!_isOnline || !_enabled) return;
+
+    // Auto-scroll: ganti halaman tiap _pageDurMs
+    if (_autoScroll && millis() - _lastPageChange >= (unsigned long)_pageDurMs) {
+      _currentPage = (_currentPage + 1) % PAGE_MAX;
+      _lastPageChange = millis();
+    }
 
     switch (_currentPage) {
       case PAGE_WIFI:    _pageWifi(); break;
