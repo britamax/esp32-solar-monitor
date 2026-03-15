@@ -461,24 +461,35 @@ void loop() {
   );
 
   // Akumulasi kWh tiap 10 detik
-  if (now - lastKwhAccum >= KWH_ACCUM_INTERVAL) {
-    float intervalSec = (now - lastKwhAccum) / 1000.0f;
-    Serial.printf("[kWh] interval=%.1fs P0=%.3fW P1=%.3fW P2=%.3fW\n",
-      intervalSec, ina.ch[0].power, ina.ch[1].power, ina.ch[2].power);
+//unsigned long now = millis();
 
-    // Log ke web jika interval tidak normal (>30 detik = potensi bug)
-    if (intervalSec > 30.0f) {
-      String ts = ntpMgr.synced ? ntpMgr.getTimeStr() : String("");
-      logger.addf(LOG_KWH, ts.length() ? ts.c_str() : nullptr,
-        "WARN interval=%.1fs (tidak normal!) P:%.2fW B:%.2fW L:%.2fW",
-        intervalSec, ina.ch[0].power, ina.ch[1].power, ina.ch[2].power);
-    }
+if (now - lastKwhAccum >= KWH_ACCUM_INTERVAL) {
 
-    ina.accumulateKwh(intervalSec);
-    lastKwhAccum = now;
-  }
+  float intervalSec = (now - lastKwhAccum) / 1000.0f;
+  lastKwhAccum = now;
+
+  ina.accumulateKwh(intervalSec);
+
+  Serial.printf(
+    "[ENERGY] dt=%.2fs P0=%.3fW P1=%.3fW P2=%.3fW\n",
+    intervalSec,
+    ina.ch[0].power,
+    ina.ch[1].power,
+    ina.ch[2].power
+  );
+}
 
   // Simpan kWh tiap 5 menit + log
+  if (now - lastKwhSave >= KWH_SAVE_MS) {
+    storage.saveKwh(ina.kwh[0], ina.kwhCh2In, ina.kwhCh2Out, ina.kwh[2]);
+    String ts = ntpMgr.synced ? ntpMgr.getTimeStr() : String("");
+    float sinceLastAccum = (now - lastKwhAccum) / 1000.0f;  // ← fix nama variabel
+    logger.addf(LOG_KWH, ts.length() ? ts.c_str() : nullptr,
+      "Save — Panel:%.3f BatIn:%.3f BatOut:%.3f Beban:%.3f kWh | interval:%.1fs",
+      ina.kwh[0], ina.kwhCh2In, ina.kwhCh2Out, ina.kwh[2], sinceLastAccum);
+    lastKwhSave = now;
+  }
+ /* 
   if (now - lastKwhSave >= KWH_SAVE_MS) {
     storage.saveKwh(ina.kwh[0], ina.kwhCh2In, ina.kwhCh2Out, ina.kwh[2]);
     String ts = ntpMgr.synced ? ntpMgr.getTimeStr() : String("");
@@ -488,7 +499,7 @@ void loop() {
       ina.kwh[0], ina.kwhCh2In, ina.kwhCh2Out, ina.kwh[2], lastInterval);
     lastKwhSave = now;
   }
-
+*/
   // NTP handle — sync tiap 6 jam
   ntpMgr.handle();
 

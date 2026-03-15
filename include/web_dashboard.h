@@ -454,12 +454,22 @@ function fmtSigned(v, d) {
 }
 // Unit otomatis: <1Wh → mWh, 1–999Wh → Wh, ≥1000Wh → kWh
 // input dalam kWh (nilai dari ESP32)
-function fmtEnergy(kwh) {
-  if (isNaN(kwh)) return '--';
-  const wh = kwh * 1000;
-  if (wh < 1)      return (wh * 1000).toFixed(1) + ' mWh';
-  if (wh < 1000)   return wh.toFixed(2) + ' Wh';
-  return kwh.toFixed(3) + ' kWh';
+function fmtEnergy(whValue) {
+  if (isNaN(whValue)) return '--';
+  const val = parseFloat(whValue);
+
+  if (val === 0) {
+    return '0.00 Wh';
+  } else if (val < 1.0) {
+    // Kurang dari 1 Wh (misal 0.017), tampilkan sebagai mWh
+    return (val * 1000).toFixed(1) + ' mWh';
+  } else if (val < 1000.0) {
+    // 1 Wh sampai 999 Wh, tampilkan sebagai Wh
+    return val.toFixed(2) + ' Wh';
+  } else {
+    // 1000 Wh atau lebih, tampilkan sebagai kWh
+    return (val / 1000.0).toFixed(3) + ' kWh';
+  }
 }
 
 function fmtUptime(s) {

@@ -47,10 +47,10 @@ static String buildPayload(const String& devName, int dataMask, bool bmpActive, 
       c["i"] = round(ina.ch[i].current * 1000) / 1000.0;
       c["p"] = round(ina.ch[i].power   * 100)  / 100.0;
     }
-    io["kwh_panel"]   = round(ina.kwh[0]    * 1000) / 1000.0;
-    io["kwh_bat_in"]  = round(ina.kwhCh2In  * 1000) / 1000.0;
-    io["kwh_bat_out"] = round(ina.kwhCh2Out * 1000) / 1000.0;
-    io["kwh_load"]    = round(ina.kwh[2]    * 1000) / 1000.0;
+    io["wh_panel"]   = round(ina.kwh[0]    * 1000) / 1000.0;
+    io["wh_bat_in"]  = round(ina.kwhCh2In  * 1000) / 1000.0;
+    io["wh_bat_out"] = round(ina.kwhCh2Out * 1000) / 1000.0;
+    io["wh_load"]    = round(ina.kwh[2]    * 1000) / 1000.0;
     io["soc"]         = ina.getSOC();
   }
   if ((dataMask & MQTT_DATA_BMP) && bmpActive) {
@@ -185,26 +185,26 @@ static void publishDiscovery(
       pub("soc", d); }
 
     { JsonDocument d; makeDevice(d);
-      d["name"]             = ch1Name + " kWh In";
-      d["unique_id"]        = devId + "_kwh_bat_in";
+      d["name"]             = ch1Name + " Wh In";
+      d["unique_id"]        = devId + "_wh_bat_in";
       d["state_topic"]      = stateTopic;
-      d["value_template"]   = "{{ value_json.ina.kwh_bat_in }}";
-      d["unit_of_measurement"] = "kWh";
+      d["value_template"]   = "{{ value_json.ina.wh_bat_in }}";
+      d["unit_of_measurement"] = "Wh";
       d["device_class"]     = "energy";
       d["state_class"]      = "total_increasing";
       addAvty(d);
-      pub("kwh_bat_in", d); }
+      pub("wh_bat_in", d); }
 
     { JsonDocument d; makeDevice(d);
-      d["name"]             = ch1Name + " kWh Out";
-      d["unique_id"]        = devId + "_kwh_bat_out";
+      d["name"]             = ch1Name + " Wh Out";
+      d["unique_id"]        = devId + "_wh_bat_out";
       d["state_topic"]      = stateTopic;
-      d["value_template"]   = "{{ value_json.ina.kwh_bat_out }}";
-      d["unit_of_measurement"] = "kWh";
+      d["value_template"]   = "{{ value_json.ina.wh_bat_out }}";
+      d["unit_of_measurement"] = "Wh";
       d["device_class"]     = "energy";
       d["state_class"]      = "total_increasing";
       addAvty(d);
-      pub("kwh_bat_out", d); }
+      pub("wh_bat_out", d); }
 
     // --- CH2 Beban ---
     { JsonDocument d; makeDevice(d);
@@ -228,26 +228,26 @@ static void publishDiscovery(
       pub("ch2_power", d); }
 
     { JsonDocument d; makeDevice(d);
-      d["name"]             = ch2Name + " kWh";
-      d["unique_id"]        = devId + "_kwh_load";
+      d["name"]             = ch2Name + " Wh";
+      d["unique_id"]        = devId + "_wh_load";
       d["state_topic"]      = stateTopic;
-      d["value_template"]   = "{{ value_json.ina.kwh_load }}";
-      d["unit_of_measurement"] = "kWh";
+      d["value_template"]   = "{{ value_json.ina.wh_load }}";
+      d["unit_of_measurement"] = "Wh";
       d["device_class"]     = "energy";
       d["state_class"]      = "total_increasing";
       addAvty(d);
-      pub("kwh_load", d); }
+      pub("wh_load", d); }
 
     { JsonDocument d; makeDevice(d);
-      d["name"]             = ch0Name + " kWh";
-      d["unique_id"]        = devId + "_kwh_panel";
+      d["name"]             = ch0Name + " Wh";
+      d["unique_id"]        = devId + "_wh_panel";
       d["state_topic"]      = stateTopic;
-      d["value_template"]   = "{{ value_json.ina.kwh_panel }}";
-      d["unit_of_measurement"] = "kWh";
+      d["value_template"]   = "{{ value_json.ina.wh_panel }}";
+      d["unit_of_measurement"] = "Wh";
       d["device_class"]     = "energy";
       d["state_class"]      = "total_increasing";
       addAvty(d);
-      pub("kwh_panel", d); }
+      pub("wh_panel", d); }
   }
 
   if ((dataMask & MQTT_DATA_BMP) && bmpActive) {

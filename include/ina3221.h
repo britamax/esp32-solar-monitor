@@ -99,23 +99,35 @@ public:
 
   // Akumulasi kWh — panggil tiap interval
   // Menggunakan rata-rata power dari semua sampel sejak interval terakhir
+  // Akumulasi Wh — dipanggil tiap 10 detik dari main.cpp
   void accumulateKwh(float intervalSec) {
     // Guard: maksimal 15 detik per interval
     if (intervalSec <= 0.0f || intervalSec > 15.0f) return;
 
+    // Faktor konversi: Detik ke Jam (dibagi 3600).
+    // Karena power dalam Watt, maka: Watt * Jam = Watt-hour (Wh)
+    float factorWh = intervalSec / 3600.0f;
+
+    // Batas Spike disesuaikan untuk sistem 20Wp. 
+    // Jika sensor tiba-tiba membaca di atas 50W, abaikan (dianggap error/spike).
+    float maxPowerLimitW = 5000.0f; 
+    float maxDeltaWh = maxPowerLimitW * factorWh;
+
     // CH1 Panel — hanya akumulasi kalau ada daya masuk
-    if (ch[0].power > 0.01f)
-      kwh[0] += (ch[0].power * intervalSec) / 3600.0f;
+    if (ch[0].power > 0.01f) {
+      kwh[0] += ch[0].power * factorWh;
+    }
 
     // CH2 Baterai — pisah masuk & keluar
-    if (ch[1].current > 0.05f)
-      kwhCh2In  += (ch[1].power * intervalSec) / 3600.0f;
+    if (ch[1].current > 0.05f) {
+      kwhCh2In += ch[1].power * factorWh;
+    }
+    
     if (ch[1].current < -0.05f) {
-      float delta = (fabsf(ch[1].power) * intervalSec) / 3600.0f;
-      // Deteksi spike: delta > 1 Wh dalam satu interval tidak masuk akal
-      if (delta > 1.0f) {
-        Serial.printf("[kWh] SPIKE CH2OUT! delta=%.4fWh P=%.3fW I=%.3fA t=%.1fs\n",
-          delta * 1000, ch[1].power, ch[1].current, intervalSec);
+      float delta = fabsf(ch[1].power) * factorWh;
+      if (delta > maxDeltaWh) {
+        Serial.printf("[Wh] SPIKE CH2OUT! delta=%.6fWh P=%.3fW I=%.3fA t=%.1fs\n",
+          delta, ch[1].power, ch[1].current, intervalSec);
       } else {
         kwhCh2Out += delta;
       }
@@ -123,13 +135,20 @@ public:
 
     // CH3 Beban
     if (ch[2].power > 0.01f) {
-      float delta3 = (ch[2].power * intervalSec) / 3600.0f;
-      if (delta3 > 1.0f) {
-        Serial.printf("[kWh] SPIKE CH3! delta=%.4fWh P=%.3fW t=%.1fs\n",
-          delta3 * 1000, ch[2].power, intervalSec);
+      float delta3 = ch[2].power * factorWh;
+      if (delta3 > maxDeltaWh) {
+        Serial.printf("[Wh] SPIKE CH3! delta=%.6fWh P=%.3fW t=%.1fs\n",
+          delta3, ch[2].power, intervalSec);
       } else {
         kwh[2] += delta3;
       }
+
+    //String ts = ntpMgr.synced ? ntpMgr.getTimeStr() : String("");
+    //logger.addf(LOG_KWH, ts.length() ? ts.c_str() : nullptr,
+    //  "Save — CH1:%.3fwh CH2in:%.3fwh CH2out:%.3fwh CH3:%.3fwh",
+    //  kwh[0], kwhCh2In, kwhCh2Out, kwh[2]);
+
+      
     }
   }
 
